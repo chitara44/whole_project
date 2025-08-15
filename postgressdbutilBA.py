@@ -15,7 +15,7 @@ DB_USER = "postgres"
 DB_PASSWORD = "R1c4rd1t0%"
 DB_PORT = "5432"
 
-class Baloto:
+class PostgressdbUtil:
 
     def __init__(self ):
         self.initial = None
@@ -453,6 +453,31 @@ class Baloto:
             print(f"Error al insertar sorteo {sorteo} tipo {tipo}: {e}")
         finally:
             session.close()
+
+    # def insertar_registros_sorteos_db(self, sorteo, numeros):
+    #     Session = sessionmaker(bind=self.engine)
+    #     session = Session()
+    #     try:
+    #         nums = list(map(int, numeros.split(',')))
+    #         data = {
+    #             "IdSorteo": int(sorteo),
+    #             "N1": nums[0], "N2": nums[1], "N3": nums[2], "N4": nums[3], "N5": nums[4]
+    #         }
+    #         query = text("""
+    #             INSERT INTO sorteos (
+    #                 "IdSorteo", "N1", "N2", "N3", "N4", "N5"
+    #             ) VALUES (
+    #                 :IdSorteo, :N1, :N2, :N3, :N4, :N5
+    #             ) ON CONFLICT ("IdSorteo") DO NOTHING;
+    #         """)
+    #         session.execute(query, data)
+    #         session.commit()
+    #         print(f"Registro {sorteo} insertado correctamente.")
+    #     except Exception as e:
+    #         session.rollback()
+    #         print(f"Error al insertar sorteo {sorteo} : {e}")
+    #     finally:
+    #         session.close()
 
     def obtener_ultimo_idsorteo(self):
         Session = sessionmaker(bind=self.engine)

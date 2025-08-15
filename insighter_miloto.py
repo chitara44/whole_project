@@ -1,10 +1,9 @@
 import pandas as pd
 import numpy as np
-import os
 from itertools import combinations
 from statistics import median
-from requester_baloto import BalotoScraper 
-from postgressdbutilBA import PostgressdbUtil
+from requester_miloto import MilotoScraper 
+from postgressdbutilMI import PostgressdbUtil
 
 
 # Función para calcular intervalos
@@ -57,6 +56,59 @@ def calcular_intervalos(df, columnas):
     return pd.DataFrame(resultados, columns=[
         'Numero', 'Intervalos', 'Promedio', 'Mediana', 'DesviacionStd', 'UltimosSorteos', 'Frecuencia', 'Probabilidad_Avg', 'Probabilidad_Mediana', 'Probabilidad_Fusion',
         'Probabilidad_Std', 'Probabilidad_Recencia', 'Probabilidad_FrecuenciaInv', 'Probabilidad_Exponencial', 'Probabilidad_Compuesta'
+    ])
+
+def calcular_intervalos_primera_vez(df, columnas):
+    resultados = []
+    
+    # Unificar las columnas de números
+    df_melted = df.melt(
+        id_vars=['IdSorteo'],
+        value_vars=columnas,
+        var_name='Grupo',
+        value_name='Numero'
+    )
+    df_melted = df_melted.dropna().sort_values(by=['Numero', 'IdSorteo'])
+
+    # Obtener sorteos únicos
+    sorteos = df['IdSorteo'].unique()
+    total_sorteos = len(sorteos)
+    
+    for num in df_melted['Numero'].unique():
+        subset = df_melted[df_melted['Numero'] == num]
+        apariciones = subset['IdSorteo'].values
+        
+        if len(apariciones) > 0:
+            # En el primer sorteo, no hay intervalos previos
+            segmentos = [0]  # intervalo inicial es 0
+            promedio = 0
+            med = 0
+            std_dev = 0
+            ultimos_sorteos = 0
+            frecuencia = 1  # primera aparición
+
+            # Todas las probabilidades pueden partir de un valor neutro
+            prob_avg = 0
+            prob_mediana = 0
+            prob_fusion = 0
+            prob_std = 0
+            prob_recencia = 1  # Recencia máxima (acaba de salir)
+            prob_frecuencia_inv = 1 / total_sorteos
+            prob_exp = 0
+            prob_compuesta = 0
+
+            resultados.append((
+                num, segmentos, promedio, med, std_dev, ultimos_sorteos, frecuencia,
+                prob_avg, prob_mediana, prob_fusion, prob_std, prob_recencia,
+                prob_frecuencia_inv, prob_exp, prob_compuesta
+            ))
+
+    return pd.DataFrame(resultados, columns=[
+        'Numero', 'Intervalos', 'Promedio', 'Mediana', 'DesviacionStd',
+        'UltimosSorteos', 'Frecuencia', 'Probabilidad_Avg',
+        'Probabilidad_Mediana', 'Probabilidad_Fusion', 'Probabilidad_Std',
+        'Probabilidad_Recencia', 'Probabilidad_FrecuenciaInv',
+        'Probabilidad_Exponencial', 'Probabilidad_Compuesta'
     ])
 
 def calcular_probabilidad_std(ultimos_sorteos, promedio, desviacion):
@@ -133,49 +185,33 @@ def calcular_probabilidad_fusion(probabilidad_avg, probabilidad_mediana):
         # Calcular la probabilidad como el mínimo entre ambas divisiones
         return (probabilidad_avg + probabilidad_mediana) / 2
 
-# Función para generar prospectos
-# def generar_prospectos_con_peso(resultados_numeros, resultados_superbalotas, metrica, metodo_calculo):
-#     numeros_prospecto = resultados_numeros[resultados_numeros[metrica] > 0.75].sort_values(by=metrica, ascending=False)
-#     superbalotas_prospecto = resultados_superbalotas[resultados_superbalotas[metrica] > 0.75].sort_values(by=metrica, ascending=False)
-#     combinaciones = []
 
-#     for comb in combinations(numeros_prospecto['Numero'], 5):
-#         for sb in superbalotas_prospecto['Numero']:
-#             probabilidad_comb = numeros_prospecto[numeros_prospecto['Numero'].isin(comb)][metrica].sum() + \
-#                                 superbalotas_prospecto[superbalotas_prospecto['Numero'] == sb][metrica].values[0]
-#             combinaciones.append((*sorted(comb), sb, probabilidad_comb, metodo_calculo))
-
-#     return pd.DataFrame(combinaciones, columns=['N1', 'N2', 'N3', 'N4', 'N5', 'SB', 'Peso', 'MetodoCalculo'])
-
-def generar_prospectos_con_peso(resultados_numeros, resultados_superbalotas, metrica, metodo_calculo):
-    if metrica not in resultados_numeros.columns or metrica not in resultados_superbalotas.columns:
-        print(f" La métrica '{metrica}' no está disponible en los resultados. Se omite el método '{metodo_calculo}'.")
-        return pd.DataFrame(columns=['N1', 'N2', 'N3', 'N4', 'N5', 'SB', 'Peso', 'MetodoCalculo'])
+def generar_prospectos_con_peso(resultados_numeros, metrica, metodo_calculo):
+    if metrica not in resultados_numeros.columns:
+        print(f"La métrica '{metrica}' no está disponible en los resultados. Se omite el método '{metodo_calculo}'.")
+        return pd.DataFrame(columns=['N1', 'N2', 'N3', 'N4', 'N5', 'Peso', 'MetodoCalculo'])
 
     numeros_prospecto = resultados_numeros[resultados_numeros[metrica] > 0.75].sort_values(by=metrica, ascending=False).head(10)
-    superbalotas_prospecto = resultados_superbalotas[resultados_superbalotas[metrica] > 0.75].sort_values(by=metrica, ascending=False).head(4)
     combinaciones = []
 
     for comb in combinations(numeros_prospecto['Numero'], 5):
-        for sb in superbalotas_prospecto['Numero']:
-            probabilidad_comb = (
-                numeros_prospecto[numeros_prospecto['Numero'].isin(comb)][metrica].sum() +
-                superbalotas_prospecto[superbalotas_prospecto['Numero'] == sb][metrica].values[0]
-            )
-            combinaciones.append((*sorted(comb), sb, probabilidad_comb, metodo_calculo))
-            print(f"Comb: {comb}, Sb: {sb}, metodo_calculo: {metodo_calculo}, probabilidad_comb: {probabilidad_comb}")
-            # print("Comb:" str(comb), "Sb: ", str(sb), "probabilidad_comb: ", str(probabilidad_comb))
+        probabilidad_comb = (
+            numeros_prospecto[numeros_prospecto['Numero'].isin(comb)][metrica].sum()
+        )
+        combinaciones.append((*sorted(comb), probabilidad_comb, metodo_calculo))
+        print(f"Comb: {comb}, metodo_calculo: {metodo_calculo}, probabilidad_comb: {probabilidad_comb}")
 
-    return pd.DataFrame(combinaciones, columns=['N1', 'N2', 'N3', 'N4', 'N5', 'SB', 'Peso', 'MetodoCalculo'])
+    return pd.DataFrame(combinaciones, columns=['N1', 'N2', 'N3', 'N4', 'N5', 'Peso', 'MetodoCalculo'])
+
 
 
 # Función para comparar los prospectos generados contra los resultados reales del siguiente sorteo
-def comparar_prospectos_con_resultados(df_sorteo, df_prospectos, sb, tipo, lastdraft):
+def comparar_prospectos_con_resultados(df_sorteo, df_prospectos, lastdraft):
     aciertos = 0
     numeros_acertados = []
     # numeros_ = ()
     numeros_sorteo = ()
-    superbalota_acertada = False
+    # superbalota_acertada = False
 
     # Consolidar todos los números de los prospectos
     # numeros_prospecto = set(df_prospectos[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten())
@@ -183,29 +219,24 @@ def comparar_prospectos_con_resultados(df_sorteo, df_prospectos, sb, tipo, lastd
     
     if lastdraft == 0:
         # Comparar con los números del sorteo actual
-        numeros_sorteo = set(map(int, df_sorteo[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten()))
+        if not df_sorteo.empty:
+            numeros_sorteo = set(map(int, df_sorteo[['N1', 'N2', 'N3', 'N4', 'N5']].values.flatten()))
+            numeros_sorteo = set(map(int, df_sorteo.iloc[0][['N1', 'N2', 'N3', 'N4', 'N5']]))
 
-        numeros_sorteo = set(map(int, df_sorteo.iloc[0][['N1', 'N2', 'N3', 'N4', 'N5']]))
+
+        # numeros_sorteo = set(map(int, df_sorteo.iloc[0][['N1', 'N2', 'N3', 'N4', 'N5']]))
 
         # Identificar los números acertados
         aciertos_numeros = numeros_sorteo & numeros_prospecto
         aciertos += len(aciertos_numeros)
         numeros_acertados = list(aciertos_numeros)
-        
-
-    if sb in df_prospectos['SB'].values:
-        aciertos += 1
-        superbalota_acertada = True
 
     return {
         'IdSorteo': [lastdraft if lastdraft > 0 else df_sorteo['IdSorteo'].iloc[0]],  # Convertir en lista
         'Numeros_Sorteo': [str(tuple(numeros_sorteo))],  # Convertir a string para uniformidad
         'Numeros_Prospecto': [str(tuple(numeros_prospecto))],  # Convertir a string
         'Aciertos': [aciertos],  # Convertir en lista
-        'Numeros_Acertados': [str(tuple(numeros_acertados))],  # Convertir a string
-        'Numero_Superbalota': sb,
-        'Superbalota_Acertada': superbalota_acertada,
-        'Tipo_Sorteo': tipo
+        'Numeros_Acertados': [str(tuple(numeros_acertados))]  # Convertir a string
     }
 
 # Función para comparar los prospectos generados contra los resultados reales del siguiente sorteo
@@ -214,7 +245,7 @@ def comparar_prospectos_con_resultados_vacios(df_sorteo, df_prospectos, sb, last
     numeros_acertados = []
     numeros_sorteo = set()
     numeros_prospecto = set()
-    superbalota_acertada = False
+    # superbalota_acertada = False
 
     # Validar si df_prospectos no está vacío antes de extraer valores
     if not df_prospectos.empty:
@@ -228,33 +259,27 @@ def comparar_prospectos_con_resultados_vacios(df_sorteo, df_prospectos, sb, last
         aciertos_numeros = numeros_sorteo & numeros_prospecto
         aciertos = len(aciertos_numeros)
         numeros_acertados = list(aciertos_numeros)
-    
-    if sb in df_prospectos['SB'].values:
-        aciertos += 1
-        superbalota_acertada = True
 
     return {
         'IdSorteo': lastdraft if lastdraft > 0 else df_sorteo['IdSorteo'].iloc[0] if not df_sorteo.empty else None,
         'Numeros_Sorteo': list(numeros_sorteo) if numeros_sorteo else [],
         'Numeros_Prospecto': list(numeros_prospecto) if numeros_prospecto else [],
         'Aciertos': aciertos,
-        'Numeros_Acertados': numeros_acertados if numeros_acertados else [],
-        'Numero_Superbalota': sb,
-        'Superbalota_Acertada': superbalota_acertada
+        'Numeros_Acertados': numeros_acertados if numeros_acertados else []
     }
 
-def filtrar_df_prospectos(df, id_min, tipoProspecto, tipoSorteo):
-    filtro = (df['IdSorteo'] == int(id_min)) & (df['TipoSorteo'] == tipoSorteo) & (df['TipoProspecto'] == tipoProspecto)
+def filtrar_df_prospectos(df, id_min, tipoProspecto):
+    filtro = (df['IdSorteo'] == int(id_min)) & (df['TipoProspecto'] == tipoProspecto)
     return df[filtro]
 
 # Proceso principal
-def proceso_completo(tipo_sorteo, postgres):
+def proceso_completo(postgres):
     # Cargar a dataframes la informacion de las
-    df_original = postgres.leer_datos_from_db(tipo_sorteo)
+    df_original = postgres.leer_datos_from_db()
     # df_resultados_db = postgres.leer_resultados_comparacion_from_db(tipo_sorteo)
 
     #Ordenar dataframes 
-    df_sorteos_ordenados = df_original[df_original['TipoSorteo'] == tipo_sorteo].sort_values(by='IdSorteo')
+    df_sorteos_ordenados = df_original.sort_values(by='IdSorteo')
 
     metodos = ['Fusión', 'Avg', 'Mediana', 'Std', 'Recencia', 'FrecuenciaInv', 'Exponencial']
     nombres = ['Fusión', 'Promedio', 'Mediana', 'Standard', 'Recencia', 'FrecuenciaInv', 'Exponencial']
@@ -266,36 +291,40 @@ def proceso_completo(tipo_sorteo, postgres):
     for idx in range(sorteo_inicial_from_comparar, postgres.final + 1 ):
         # Obtener los sorteos hasta el sorteo anterior
         current_draft =int(idx)
-        df_prospectos = postgres.leer_prospectos_from_db(current_draft, tipo_sorteo )
-        df_prospectos_ordenados = df_prospectos.sort_values(by=['IdSorteo', 'Posicion', 'TipoSorteo', 'TipoProspecto'])
-        df_previos = df_sorteos_ordenados.iloc[:idx]
-        ## df_current = df_sorteos_ordenados.iloc[:idx]
-        # id_sorteo = df_sorteos_ordenados.iloc[pos]['IdSorteo']
-        registro_filtrado = df_sorteos_ordenados[df_sorteos_ordenados['IdSorteo'] == current_draft]
-        sb = int(df_sorteos_ordenados.iloc[pos]['SB'])
+        df_prospectos = postgres.leer_prospectos_from_db(current_draft )
+        if not df_prospectos.empty:
 
-        # Calcular intervalos y generar prospectos basados en los sorteos previos
-        resultados_numeros = calcular_intervalos(df_previos, ['N1', 'N2', 'N3', 'N4', 'N5'])
-        resultados_superbalotas = calcular_intervalos(df_previos, ['SB'])
+            df_prospectos_ordenados = df_prospectos.sort_values(by=['IdSorteo', 'Posicion', 'TipoProspecto'])
+            df_previos = df_sorteos_ordenados.iloc[:idx]
+            registro_filtrado = df_sorteos_ordenados[df_sorteos_ordenados['IdSorteo'] == current_draft]
+
+            # Calcular intervalos y generar prospectos basados en los sorteos previos
+            resultados_numeros = calcular_intervalos(df_previos, ['N1', 'N2', 'N3', 'N4', 'N5'])
+
+            prospectos = {}
+            for metodo, nombre in zipped_methods.items():
+                df_filtrado = filtrar_df_prospectos(
+                    df_prospectos_ordenados, 
+                    idx, 
+                    nombre 
+                )
+                prospectos[metodo] = df_filtrado
+        else:
+            df_prospectos_ordenados = pd.DataFrame(columns = ["IdSorteo", "Posicion", "TipoProspecto", "N1", "N2", "N3", "N4", "N5", "Peso"])
+            df_previos = pd.DataFrame(columns=['IdSorteo', 'N1', 'N2', 'N3', 'N4', 'N5'])
+            resultados_numeros = calcular_intervalos_primera_vez(df_previos, ['N1', 'N2', 'N3', 'N4', 'N5'])
+            registro_filtrado = df_sorteos_ordenados[df_sorteos_ordenados['IdSorteo'] == current_draft + 1]
+            print(registro_filtrado)
         
-        prospectos = {}
 
-        for metodo, nombre in zipped_methods.items():
-            df_filtrado = filtrar_df_prospectos(
-                df_prospectos_ordenados, 
-                idx, 
-                nombre, 
-                tipo_sorteo
-            )
-            prospectos[metodo] = df_filtrado
 
         # df_prospectos_fusion, df_prospectos_promedio, df_prospectos_mediana 
-        prospectos = generar_prospectos(df_prospectos_ordenados, resultados_numeros, resultados_superbalotas, current_draft, tipo_sorteo, postgres, zipped_methods)
+        prospectos = generar_prospectos(df_prospectos_ordenados, resultados_numeros, current_draft, postgres, zipped_methods)
 
         # Combinar los prospectos generados
         df_prospectos = pd.concat(prospectos.values(), ignore_index=True)
 
-        siguiente_sorteo = (df_sorteos_ordenados['IdSorteo'] == int(current_draft + 1)) & (df_sorteos_ordenados['TipoSorteo'] == tipo_sorteo) 
+        siguiente_sorteo = (df_sorteos_ordenados['IdSorteo'] == int(current_draft + 1))  
 
         # Obtener los resultados reales del siguiente sorteo
         pos += 1
@@ -303,7 +332,7 @@ def proceso_completo(tipo_sorteo, postgres):
         # Comparar los prospectos con los resultados reales
 
         current = current_draft if current_draft == postgres.final else 0 
-        resultado_comparacion = comparar_prospectos_con_resultados(registro_filtrado, df_prospectos, sb, tipo_sorteo, int(current))
+        resultado_comparacion = comparar_prospectos_con_resultados(registro_filtrado, df_prospectos, int(current))
         df_resultado_comparacion = pd.DataFrame(resultado_comparacion)
         if current == 0 : 
             postgres.insertar_comparaciones_calculadas(df_resultado_comparacion)
@@ -314,7 +343,7 @@ def proceso_completo(tipo_sorteo, postgres):
     return df_resultado_comparacion
 
 # Genera y guarda los prospectos según los métodos especificados.
-def generar_prospectos(df_prospectos_ordenados, resultados_numeros, resultados_superbalotas, id_sorteo, tipo_sorteo, postgres, metodos):
+def generar_prospectos(df_prospectos_ordenados, resultados_numeros,  id_sorteo, postgres, metodos):
 
     prospectos = {}    
 
@@ -326,8 +355,8 @@ def generar_prospectos(df_prospectos_ordenados, resultados_numeros, resultados_s
         if df_filtrado.empty:
             # Nombre de la métrica según el método
             metrica = f'Probabilidad_{metodo}'
-            df_prospectos_new = generar_prospectos_con_peso(resultados_numeros, resultados_superbalotas, metrica, metodo)
-            postgres.guardar_prospectos_en_db(df_prospectos_new, tipo_sorteo, metodo, id_sorteo)
+            df_prospectos_new = generar_prospectos_con_peso(resultados_numeros, metrica, metodo)
+            postgres.guardar_prospectos_en_db(df_prospectos_new, metodo, id_sorteo)
             prospectos[metodo] = df_prospectos_new
         else:
             prospectos[metodo] = df_filtrado
@@ -372,7 +401,7 @@ def figuresByDelta():
 # Ejecución
 if __name__ == "__main__":
     # insertar data desde la web 
-    initial = 2081 #int(input("Ingrese el número de sorteo inicial: "))  ##inicio de los sorteos 2081
+    initial = 1 #int(input("Ingrese el número de sorteo inicial: "))  ##inicio de los sorteos 2081
 
     postgres = PostgressdbUtil()
     most_recent_inserted = postgres.obtener_ultimo_idsorteo()
@@ -380,7 +409,7 @@ if __name__ == "__main__":
 
     scrap_initial =  most_recent_inserted + 1 #int(input("Ingrese el número de scrapping inicial ó 0 para omitir: "))  ##sorteo inicial para scrapping de los sitios
     if(scrap_initial > 0):
-        scrapper = BalotoScraper(scrap_initial, most_recent_inserted)
+        scrapper = MilotoScraper(scrap_initial, most_recent_inserted)
         scrapper.run()
         most_recent_scrapped = scrapper.final
         final = scrapper.final +1
@@ -404,11 +433,10 @@ if __name__ == "__main__":
     # figuresByDelta()
 
     # Ejecutar el proceso completo para sorteos 'Tr'
-    tipo_sorteo = 'Tr'
-    df_resultados_comparacion_tr = proceso_completo(tipo_sorteo, postgres)
-    df_resultados_comparacion_tr.to_csv('resultados_comparacion_tr2.csv', index=False)
+    df_resultados_comparacion = proceso_completo(postgres)
+    df_resultados_comparacion.to_csv('resultados_miloto.csv', index=False)
 
-    # Ejecutar el proceso completo para sorteos 'Re'
-    tipo_sorteo = 'Re'
-    df_resultados_comparacion_re = proceso_completo(tipo_sorteo, postgres)
-    df_resultados_comparacion_re.to_csv('resultados_comparacion_re2.csv', index=False)
+    # # Ejecutar el proceso completo para sorteos 'Re'
+    # tipo_sorteo = 'Re'
+    # df_resultados_comparacion_re = proceso_completo(tipo_sorteo, postgres)
+    # df_resultados_comparacion_re.to_csv('resultados_comparacion_re2.csv', index=False)

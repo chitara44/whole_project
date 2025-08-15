@@ -1,7 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 import re
-from postgressdbutil import Baloto
+from postgressdbutilBA import PostgressdbUtil
 
 class BalotoScraper:
     def __init__(self, initial, final):
@@ -74,7 +74,7 @@ class BalotoScraper:
                     fecha = self.extraer_fecha_sorteo(soup)
                     ganador = self.is_a_winner(soup)
                     numeros = self.extraer_numeros_sorteo(soup)
-                    postgres = Baloto()
+                    postgres = PostgressdbUtil()
                     postgres.insertar_registros_sorteos_db(sorteo, fecha, tipo, ganador, numeros)
                 else:
                     self.final = i - 1
